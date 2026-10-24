@@ -1,0 +1,273 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Group Trip Ledger</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one column ledger. Header with trip name, tab bar, then a panel per tab. */
+:root{
+  --bg:#f4f6f3; --surface:#ffffff; --fg:#16211e; --muted:#5e6b66; --line:#dbe2dd;
+  --accent:#0f6b5c; --accent-fg:#ffffff; --accent-soft:#e0efeb;
+  --pos:#1d7a4b; --neg:#b3382c; --warn-soft:#fbeee4; --warn:#9a4a14;
+  --display:"Bricolage Grotesque","Avenir Next",system-ui,sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#111816; --surface:#19231f; --fg:#e8efec; --muted:#97a69f; --line:#2b3a34;
+  --accent:#4cc3a9; --accent-fg:#0a1411; --accent-soft:#1e332d;
+  --pos:#5fd394; --neg:#ff8a7a; --warn-soft:#33241a; --warn:#f0b07c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111816; --surface:#19231f; --fg:#e8efec; --muted:#97a69f; --line:#2b3a34;
+  --accent:#4cc3a9; --accent-fg:#0a1411; --accent-soft:#1e332d;
+  --pos:#5fd394; --neg:#ff8a7a; --warn-soft:#33241a; --warn:#f0b07c; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--body);padding-block:20px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:30px;line-height:1.1}
+h2{font-size:19px}
+h3{font-size:15px}
+.num{font-variant-numeric:tabular-nums}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.total{text-align:right}
+.total b{display:block;font:700 30px/1.1 var(--display)}
+.banner{background:var(--warn-soft);color:var(--warn);padding:8px 12px;border-radius:6px;font-size:13px}
+nav{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);font:600 14px var(--body);padding:10px 14px;cursor:pointer;white-space:nowrap}
+nav button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section.panel{display:flex;flex-direction:column;gap:18px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;background:var(--accent-soft);color:var(--accent)}
+.pill.pos{background:var(--accent-soft);color:var(--pos)} .pill.neg{background:var(--warn-soft);color:var(--neg)}
+.pos{color:var(--pos)} .neg{color:var(--neg)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.bar{display:grid;grid-template-columns:110px 1fr 84px;gap:10px;align-items:center;font-size:14px;padding:4px 0}
+.bar i{display:block;height:10px;background:var(--accent);border-radius:2px;min-width:2px}
+.bar span:last-child{text-align:right}
+.settle li{padding:8px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+.settle li:last-child{border:0} .settle{list-style:none;margin:0;padding:0}
+form.exp{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;min-width:0}
+input,select,textarea{font:15px var(--body);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;width:100%;min-width:0}
+.wide{grid-column:1/-1}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:flex;flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:14px;color:var(--fg);font-weight:500;border:1px solid var(--line);border-radius:99px;padding:5px 12px;cursor:pointer;background:var(--bg)}
+.chip input{width:auto}
+.chip:has(input:checked){background:var(--accent-soft);border-color:var(--accent)}
+.btn{font:600 14px var(--body);background:var(--accent);color:var(--accent-fg);border:0;border-radius:6px;padding:9px 16px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.btn.small{padding:4px 10px;font-size:13px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.empty{color:var(--muted);text-align:center;padding:28px 8px}
+.muted{color:var(--muted)} .small{font-size:13px}
+.setup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+@media (max-width:520px){.bar{grid-template-columns:90px 1fr 70px} h1{font-size:25px}}
+@media (prefers-reduced-motion:no-preference){.bar i{transition:width .3s}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Group trip ledger</div>
+      <h1 id="tripTitle">Our Trip</h1>
+    </div>
+    <div class="total"><div class="eyebrow">Total spent</div><b class="num" id="grand">$0.00</b><span class="muted small num" id="count">0 expenses</span></div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+  <nav role="tablist" id="tabs"></nav>
+  <section class="panel" id="panel"></section>
+</div>
+
+<script>
+const CATS=["Flights","Lodging","Food & Drinks","Transportation","Activities","Shopping","Groceries","Other"];
+let settings={tripName:"Our Trip",currency:"USD",travelers:[{id:"t1",name:"Traveler 1"},{id:"t2",name:"Traveler 2"},{id:"t3",name:"Traveler 3"},{id:"t4",name:"Traveler 4"}],categories:CATS.slice()};
+let expenses=[]; let tab="dashboard"; let editing=null; let personView=null; let banner="";
+let store=null, ready=false;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money=n=>{try{return new Intl.NumberFormat(undefined,{style:"currency",currency:settings.currency||"USD"}).format(n)}catch(e){return (settings.currency||"")+" "+n.toFixed(2)}};
+const tname=id=>(settings.travelers.find(t=>t.id===id)||{name:"(removed)"}).name;
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const today=()=>new Date().toISOString().slice(0,10);
+
+/* ---------- storage: shared db when available, else this device ---------- */
+const LS="trip-ledger-v1";
+function lsLoad(){try{const d=JSON.parse(localStorage.getItem(LS)||"null");if(d){settings=d.settings||settings;expenses=d.expenses||[]}}catch(e){}}
+function lsSave(){try{localStorage.setItem(LS,JSON.stringify({settings,expenses}))}catch(e){}}
+const dataOf=d=>d&&typeof d.data==="function"?d.data():(d&&d.data!==undefined&&typeof d.data!=="function"?d.data:d);
+async function initStore(){
+  let db=null;
+  try{db=window.claude&&claude.use?await claude.use("db"):null}catch(e){}
+  if(!db){lsLoad();banner="Sharing is off here. Expenses are saved on this device only.";ready=true;render();return}
+  store=db;
+  try{
+    db.doc("meta/settings").onSnapshot(s=>{const d=dataOf(s);if(d&&d.travelers){settings=Object.assign({},settings,d)}ready=true;render()});
+    db.collection("expenses").onSnapshot(snap=>{
+      const docs=snap.docs||(Array.isArray(snap)?snap:[]);
+      expenses=docs.map(d=>Object.assign({},dataOf(d),{id:d.id||dataOf(d).id}));ready=true;render()});
+  }catch(e){store=null;lsLoad();banner="Could not reach the shared store. Expenses are saved on this device only.";ready=true;render()}
+}
+async function saveExpense(e){
+  const i=expenses.findIndex(x=>x.id===e.id); if(i>=0)expenses[i]=e; else expenses.push(e);
+  if(store){try{await store.collection("expenses").doc(e.id).set(e)}catch(err){banner="Save failed: "+(err&&err.message||err)}} else lsSave();
+  render();
+}
+async function removeExpense(id){
+  expenses=expenses.filter(x=>x.id!==id);
+  if(store){try{await store.collection("expenses").doc(id).delete()}catch(err){banner="Delete failed: "+(err&&err.message||err)}} else lsSave();
+  render();
+}
+async function saveSettings(){
+  if(store){try{await store.doc("meta/settings").set(settings)}catch(err){banner="Save failed: "+(err&&err.message||err)}} else lsSave();
+  render();
+}
+
+/* ---------- math ---------- */
+function compute(){
+  const ids=settings.travelers.map(t=>t.id);
+  const paid={},owed={}; ids.forEach(i=>{paid[i]=0;owed[i]=0});
+  let total=0, skipped=0; const byCat={};
+  expenses.forEach(e=>{
+    const a=+e.amount||0; total+=a; byCat[e.cat]=(byCat[e.cat]||0)+a;
+    if(e.paidBy in paid)paid[e.paidBy]+=a;
+    const sh=(e.shares||[]).filter(s=>s in owed);
+    if(!sh.length){skipped++;return}
+    sh.forEach(s=>owed[s]+=a/sh.length);
+  });
+  const net={}; ids.forEach(i=>net[i]=paid[i]-owed[i]);
+  // minimum-ish transfers: greedy match largest debtor to largest creditor
+  const cr=ids.filter(i=>net[i]>0.005).map(i=>({id:i,v:net[i]})).sort((a,b)=>b.v-a.v);
+  const db=ids.filter(i=>net[i]<-0.005).map(i=>({id:i,v:-net[i]})).sort((a,b)=>b.v-a.v);
+  const pay=[];let i=0,j=0;
+  while(i<db.length&&j<cr.length){const x=Math.min(db[i].v,cr[j].v);pay.push({from:db[i].id,to:cr[j].id,amt:x});db[i].v-=x;cr[j].v-=x;if(db[i].v<.005)i++;if(cr[j].v<.005)j++}
+  return {paid,owed,net,total,skipped,byCat,pay};
+}
+
+/* ---------- views ---------- */
+const TABS=[["dashboard","Balances"],["expenses","Expenses"],["person","By person"],["setup","Setup"]];
+function renderTabs(){
+  $("#tabs").innerHTML=TABS.map(([k,l])=>`<button role="tab" aria-selected="${tab===k}" data-tab="${k}">${l}</button>`).join("");
+  $("#tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});
+}
+function dashboardView(c){
+  const rows=settings.travelers.map(t=>{const n=c.net[t.id];
+    const st=Math.abs(n)<.005?'<span class="pill">Settled</span>':n>0?'<span class="pill pos">Should receive</span>':'<span class="pill neg">Owes money</span>';
+    return `<tr><td>${esc(t.name)}</td><td class="r num">${money(c.paid[t.id])}</td><td class="r num">${money(c.owed[t.id])}</td><td class="r num ${n>0.005?"pos":n<-0.005?"neg":""}">${n>0?"+":""}${money(n)}</td><td>${st}</td></tr>`}).join("");
+  const max=Math.max(1,...Object.values(c.byCat));
+  const cats=settings.categories.concat(Object.keys(c.byCat).filter(k=>!settings.categories.includes(k)));
+  const bars=cats.map(k=>{const v=c.byCat[k]||0;return `<div class="bar"><span>${esc(k)}</span><span><i style="width:${v/max*100}%;${v?"":"opacity:.2"}"></i></span><span class="num">${money(v)}</span></div>`}).join("");
+  const settle=c.pay.length?c.pay.map(p=>`<li><span><b>${esc(tname(p.from))}</b> pays <b>${esc(tname(p.to))}</b></span><b class="num">${money(p.amt)}</b></li>`).join(""):`<li class="muted">${expenses.length?"Everyone is settled up.":"Nothing to settle yet."}</li>`;
+  return `<div class="card scroll"><h2>Who owes whom</h2><table style="margin-top:8px"><thead><tr><th>Traveler</th><th class="r">Paid</th><th class="r">Fair share</th><th class="r">Net</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="muted small" style="margin:10px 0 0">Positive net means the group owes this traveler. Negative means they owe the group.</p></div>
+    <div class="grid2"><div class="card"><h2>Suggested payments</h2><ul class="settle" style="margin-top:6px">${settle}</ul></div>
+    <div class="card"><h2>Spending by category</h2><div style="margin-top:6px">${bars}</div></div></div>
+    ${c.skipped?`<div class="banner">${c.skipped} expense${c.skipped>1?"s have":" has"} nobody selected to share it, so ${c.skipped>1?"they are":"it is"} left out of fair shares.</div>`:""}`;
+}
+function formView(){
+  const e=editing&&expenses.find(x=>x.id===editing)||{date:today(),desc:"",cat:settings.categories[0],paidBy:settings.travelers[0]?.id,amount:"",notes:"",shares:settings.travelers.map(t=>t.id)};
+  return `<form class="card exp" id="expForm"><h2 class="wide">${editing?"Edit expense":"Add expense"}</h2>
+    <label>Date<input type="date" id="fDate" value="${esc(e.date)}" required></label>
+    <label>Description<input id="fDesc" value="${esc(e.desc)}" placeholder="Hotel, dinner, train tickets" required></label>
+    <label>Category<select id="fCat">${settings.categories.map(c=>`<option ${c===e.cat?"selected":""}>${esc(c)}</option>`).join("")}</select></label>
+    <label>Paid by<select id="fPaid">${settings.travelers.map(t=>`<option value="${t.id}" ${t.id===e.paidBy?"selected":""}>${esc(t.name)}</option>`).join("")}</select></label>
+    <label>Amount (${esc(settings.currency)})<input type="number" id="fAmt" step="0.01" min="0" value="${esc(e.amount)}" required></label>
+    <label>Notes<input id="fNotes" value="${esc(e.notes)}"></label>
+    <label class="wide">Shared by<div class="chips">${settings.travelers.map(t=>`<label class="chip"><input type="checkbox" name="sh" value="${t.id}" ${(e.shares||[]).includes(t.id)?"checked":""}>${esc(t.name)}</label>`).join("")}<button type="button" class="btn ghost small" id="allBtn">Everyone</button></div></label>
+    <div class="row wide"><button class="btn" type="submit">${editing?"Save changes":"Add expense"}</button>${editing?'<button type="button" class="btn ghost" id="cancelEdit">Cancel</button>':""}</div></form>`;
+}
+function expenseTable(list,actions){
+  if(!list.length)return `<div class="empty">No expenses yet. Add the first one above.</div>`;
+  const sorted=list.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  return `<div class="scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Paid by</th><th class="r">Amount</th><th>Shared by</th>${actions?"<th></th>":""}</tr></thead><tbody>${sorted.map(e=>`<tr><td class="num" style="white-space:nowrap">${esc(e.date)}</td><td>${esc(e.desc)}${e.notes?`<div class="muted small">${esc(e.notes)}</div>`:""}</td><td>${esc(e.cat)}</td><td>${esc(tname(e.paidBy))}</td><td class="r num">${money(+e.amount||0)}</td><td class="small">${(e.shares||[]).length===settings.travelers.length?"Everyone":esc((e.shares||[]).map(tname).join(", "))}</td>${actions?`<td style="white-space:nowrap"><button class="btn ghost small" data-edit="${e.id}">Edit</button> <button class="btn ghost small" data-del="${e.id}">Delete</button></td>`:""}</tr>`).join("")}</tbody></table></div>`;
+}
+function expensesView(){
+  return formView()+`<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:8px"><h2>All expenses</h2><button class="btn ghost small" id="csvBtn">Download CSV</button></div>${expenseTable(expenses,true)}</div>`;
+}
+function personViewHtml(){
+  if(!personView||!settings.travelers.some(t=>t.id===personView))personView=settings.travelers[0]?.id;
+  const list=expenses.filter(e=>(e.shares||[]).includes(personView));
+  const share=e=>(+e.amount||0)/(e.shares||[]).length;
+  const tot=list.reduce((s,e)=>s+share(e),0);
+  const paid=expenses.filter(e=>e.paidBy===personView).reduce((s,e)=>s+(+e.amount||0),0);
+  const sorted=list.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const table=!sorted.length?`<div class="empty">No shared expenses for this traveler yet.</div>`:
+    `<div class="scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Paid by</th><th class="r">Total</th><th class="r">Split</th><th class="r">Their share</th></tr></thead><tbody>${sorted.map(e=>`<tr><td class="num" style="white-space:nowrap">${esc(e.date)}</td><td>${esc(e.desc)}${e.notes?`<div class="muted small">${esc(e.notes)}</div>`:""}</td><td>${esc(e.cat)}</td><td>${esc(tname(e.paidBy))}</td><td class="r num">${money(+e.amount||0)}</td><td class="r num">÷ ${(e.shares||[]).length}</td><td class="r num"><b>${money(share(e))}</b></td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:12px"><label style="min-width:200px">Traveler<select id="pSel">${settings.travelers.map(t=>`<option value="${t.id}" ${t.id===personView?"selected":""}>${esc(t.name)}</option>`).join("")}</select></label><div class="total"><div class="eyebrow">Their share</div><b class="num" style="font:700 24px var(--display)">${money(tot)}</b><div class="muted small num">${list.length} expense${list.length===1?"":"s"} · paid ${money(paid)} out of pocket</div></div></div>${table}</div>`;
+}
+function setupView(){
+  return `<div class="card"><h2>Trip</h2><div class="setup-grid" style="margin-top:12px">
+    <label>Trip name<input id="sName" value="${esc(settings.tripName)}"></label>
+    <label>Currency code<input id="sCur" value="${esc(settings.currency)}" maxlength="3" style="text-transform:uppercase"></label></div></div>
+    <div class="card"><h2>Travelers</h2><p class="muted small" style="margin:4px 0 12px">Up to six. Renaming keeps past expenses attached to the same person.</p><div class="setup-grid">
+    ${settings.travelers.map(t=>`<label>${esc(t.name)}<span class="row" style="flex-wrap:nowrap"><input data-tn="${t.id}" value="${esc(t.name)}"><button class="btn ghost small" data-rm="${t.id}" type="button">Remove</button></span></label>`).join("")}
+    </div>${settings.travelers.length<6?'<div style="margin-top:12px"><button class="btn ghost" id="addT" type="button">Add traveler</button></div>':""}</div>
+    <div class="card"><h2>Categories</h2><label style="margin-top:12px">One per line<textarea id="sCats" rows="8">${esc(settings.categories.join("\n"))}</textarea></label></div>
+    <div><button class="btn" id="saveSet">Save setup</button></div>`;
+}
+function render(){
+  $("#tripTitle").textContent=settings.tripName||"Trip";
+  document.title=(settings.tripName||"Group Trip")+" Ledger";
+  const c=compute();
+  $("#grand").textContent=money(c.total);
+  $("#count").textContent=expenses.length+(expenses.length===1?" expense":" expenses");
+  const b=$("#banner");b.hidden=!banner;b.textContent=banner;
+  renderTabs();
+  const p=$("#panel");
+  if(!ready){p.innerHTML='<div class="empty">Loading trip…</div>';return}
+  p.innerHTML=tab==="dashboard"?dashboardView(c):tab==="expenses"?expensesView():tab==="person"?personViewHtml():setupView();
+  wire();
+}
+function wire(){
+  const f=$("#expForm");
+  if(f){
+    f.onsubmit=ev=>{ev.preventDefault();
+      const shares=[...f.querySelectorAll('input[name="sh"]:checked')].map(i=>i.value);
+      const e={id:editing||uid(),date:$("#fDate").value,desc:$("#fDesc").value.trim(),cat:$("#fCat").value,paidBy:$("#fPaid").value,amount:Math.round(parseFloat($("#fAmt").value)*100)/100,notes:$("#fNotes").value.trim(),shares};
+      if(!shares.length){banner="Pick at least one person who shares this expense.";render();return}
+      banner="";editing=null;saveExpense(e)};
+    $("#allBtn").onclick=()=>f.querySelectorAll('input[name="sh"]').forEach(i=>i.checked=true);
+    const ce=$("#cancelEdit");if(ce)ce.onclick=()=>{editing=null;render()};
+  }
+  document.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{editing=b.dataset.edit;render();window.scrollTo({top:0,behavior:"smooth"})});
+  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
+    if(b.dataset.armed){removeExpense(b.dataset.del)}else{b.dataset.armed=1;b.textContent="Confirm?";setTimeout(()=>{b.dataset.armed="";b.textContent="Delete"},3000)}});
+  const cb=$("#csvBtn");if(cb)cb.onclick=exportCsv;
+  const ps=$("#pSel");if(ps)ps.onchange=()=>{personView=ps.value;render()};
+  const sv=$("#saveSet");
+  if(sv){
+    $("#addT")&&($("#addT").onclick=()=>{readSetup();let n=1;while(settings.travelers.some(t=>t.id==="t"+n))n++;settings.travelers.push({id:"t"+n,name:"Traveler "+(settings.travelers.length+1)});render()});
+    document.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{
+      const id=b.dataset.rm;if(expenses.some(e=>e.paidBy===id||(e.shares||[]).includes(id))){banner=tname(id)+" appears in existing expenses and can't be removed. Rename them instead.";render();return}
+      readSetup();settings.travelers=settings.travelers.filter(t=>t.id!==id);render()});
+    sv.onclick=()=>{readSetup();banner="";saveSettings()};
+  }
+}
+function readSetup(){
+  const n=$("#sName");if(!n)return;
+  settings.tripName=n.value.trim()||"Our Trip";
+  settings.currency=($("#sCur").value.trim().toUpperCase()||"USD").slice(0,3);
+  document.querySelectorAll("[data-tn]").forEach(i=>{const t=settings.travelers.find(x=>x.id===i.dataset.tn);if(t)t.name=i.value.trim()||t.name});
+  const cats=$("#sCats").value.split("\n").map(s=>s.trim()).filter(Boolean);
+  if(cats.length)settings.categories=cats;
+}
+async function exportCsv(){
+  const q=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+  const head=["Date","Description","Category","Paid by","Amount","Notes","Shared by"];
+  const body=expenses.slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(e=>[e.date,e.desc,e.cat,tname(e.paidBy),e.amount,e.notes,(e.shares||[]).map(tname).join("; ")].map(q).join(","));
+  const data=[head.map(q).join(","),...body].join("\n");
+  try{const d=await claude.use("downloads");if(!d)throw 0;await d.save({filename:(settings.tripName||"trip").replace(/\W+/g,"-")+"-expenses.csv",data})}
+  catch(e){banner="Downloads are not available here.";render()}
+}
+render();
+initStore();
+</script>
+
+</body></html>
