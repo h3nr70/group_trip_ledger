@@ -75,6 +75,7 @@ input,select,textarea{font:15px var(--body);color:var(--fg);background:var(--bg)
 
 <div class="wrap">
   <header>
+    <div class="row" id="accountInfo" hidden><span class="muted small" id="accountEmail"></span><button class="btn ghost small" id="signOutBtn" type="button">Sign out</button></div>
     <div>
       <div class="eyebrow">Group trip ledger</div>
       <h1 id="tripTitle">Our Trip</h1>
@@ -82,10 +83,29 @@ input,select,textarea{font:15px var(--body);color:var(--fg);background:var(--bg)
     <div class="total"><div class="eyebrow">Total spent</div><b class="num" id="grand">$0.00</b><span class="muted small num" id="count">0 expenses</span></div>
   </header>
   <div class="banner" id="banner" hidden></div>
+  <div id="authScreen"><div class="auth-card">
+    <div class="eyebrow">Group trip ledger</div><h2 id="authHeading">Sign in to your trip</h2>
+    <div class="auth-note">Only invited email addresses can read and edit expenses.</div>
+    <form id="authForm" style="display:grid;gap:12px">
+      <label>Email<input type="email" id="authEmail" autocomplete="email" required></label>
+      <label>Password<input type="password" id="authPassword" autocomplete="current-password" minlength="6" required></label>
+      <button class="btn" id="authSubmit" type="submit">Sign in</button>
+    </form>
+    <button class="btn ghost" id="authSwitch" type="button">Create an account</button>
+    <button class="btn ghost" id="authReset" type="button">Forgot password?</button>
+    <div id="authVerify" hidden><p class="auth-note">Please verify your email using the message Firebase sent you. Then select “I verified my email.”</p>
+      <div class="row"><button class="btn ghost" id="authResend" type="button">Resend verification</button><button class="btn" id="authRefresh" type="button">I verified my email</button></div>
+    </div>
+    <div class="auth-error" id="authError" role="alert"></div>
+  </div></div>
   <nav role="tablist" id="tabs"></nav>
   <section class="panel" id="panel"></section>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="./firebase-config.js"></script>
 <script>
 const CATS=["Flights","Lodging","Food & Drinks","Transportation","Activities","Shopping","Groceries","Other"];
 let settings={tripName:"Our Trip",currency:"USD",travelers:[{id:"t1",name:"Traveler 1"},{id:"t2",name:"Traveler 2"},{id:"t3",name:"Traveler 3"},{id:"t4",name:"Traveler 4"}],categories:CATS.slice()};
@@ -98,38 +118,105 @@ const tname=id=>(settings.travelers.find(t=>t.id===id)||{name:"(removed)"}).name
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const today=()=>new Date().toISOString().slice(0,10);
 
-/* ---------- storage: shared db when available, else this device ---------- */
-const LS="trip-ledger-v1";
-function lsLoad(){try{const d=JSON.parse(localStorage.getItem(LS)||"null");if(d){settings=d.settings||settings;expenses=d.expenses||[]}}catch(e){}}
-function lsSave(){try{localStorage.setItem(LS,JSON.stringify({settings,expenses}))}catch(e){}}
-const dataOf=d=>d&&typeof d.data==="function"?d.data():(d&&d.data!==undefined&&typeof d.data!=="function"?d.data:d);
-async function initStore(){
-  let db=null;
-  try{db=window.claude&&claude.use?await claude.use("db"):null}catch(e){}
-  if(!db){lsLoad();banner="Sharing is off here. Expenses are saved on this device only.";ready=true;render();return}
-  store=db;
-  try{
-    db.doc("meta/settings").onSnapshot(s=>{const d=dataOf(s);if(d&&d.travelers){settings=Object.assign({},settings,d)}ready=true;render()});
-    db.collection("expenses").onSnapshot(snap=>{
-      const docs=snap.docs||(Array.isArray(snap)?snap:[]);
-      expenses=docs.map(d=>Object.assign({},dataOf(d),{id:d.id||dataOf(d).id}));ready=true;render()});
-  }catch(e){store=null;lsLoad();banner="Could not reach the shared store. Expenses are saved on this device only.";ready=true;render()}
+/* ---------- Firestore shared storage and Firebase Authentication ---------- */
+// Firebase project settings belong in firebase-config.js (public config, not an admin key).
+// Access is enforced by firestore.rules; do not use open public write rules.
+const defaultSettings=JSON.parse(JSON.stringify(settings));
+const tripDocId="main"; // Everyone with an allowlisted email shares one trip.
+let tripRef=null, unsubscribeSettings=null, unsubscribeExpenses=null;
+let authMode="signin", verifiedUser=null;
+function authMessage(msg){document.querySelector("#authError").textContent=msg||""}
+function showLogin(){document.querySelector("#authScreen").hidden=false;document.querySelector("#accountInfo").hidden=true}
+function showLedger(user){document.querySelector("#authScreen").hidden=true;document.querySelector("#accountInfo").hidden=false;document.querySelector("#accountEmail").textContent=user.email}
+function stopListeners(){
+  if(unsubscribeSettings)unsubscribeSettings(); if(unsubscribeExpenses)unsubscribeExpenses();
+  unsubscribeSettings=unsubscribeExpenses=null;tripRef=null;store=null;
+  expenses=[];settings=JSON.parse(JSON.stringify(defaultSettings));ready=false;
+}
+function reportDatabaseError(e){
+  console.error("Firestore error:",e);
+  banner=e.code==="permission-denied"
+    ?"Access denied. Ask the trip owner to add your VERIFIED email to the Firestore allowlist."
+    :"Shared database error: "+e.message;
+  render();
+}
+function initializeListeners(user){
+  stopListeners();
+  const db=firebase.firestore();store=db;tripRef=db.collection("trips").doc(tripDocId);
+  showLedger(user);banner="Connecting to shared trip...";render();
+  let gotSettings=false,gotExpenses=false;
+  function markReady(){if(gotSettings&&gotExpenses){ready=true;banner="";render()}}
+  unsubscribeSettings=tripRef.collection("meta").doc("settings").onSnapshot(s=>{
+    settings=s.exists?{...defaultSettings,...s.data()}:JSON.parse(JSON.stringify(defaultSettings));
+    gotSettings=true;markReady();
+  },reportDatabaseError);
+  unsubscribeExpenses=tripRef.collection("expenses").onSnapshot(snap=>{
+    expenses=snap.docs.map(d=>({...d.data(),id:d.id}));gotExpenses=true;markReady();
+  },reportDatabaseError);
+}
+function initStore(){
+  if(!window.FIREBASE_CONFIG||!window.FIREBASE_CONFIG.apiKey||window.FIREBASE_CONFIG.apiKey.includes("YOUR_")){
+    authMessage("Firebase is not configured. Fill out firebase-config.js first.");showLogin();return;
+  }
+  try{firebase.initializeApp(window.FIREBASE_CONFIG)}catch(e){authMessage(e.message);return}
+  document.querySelector("#authSwitch").onclick=()=>{
+    authMode=authMode==="signin"?"signup":"signin";
+    document.querySelector("#authHeading").textContent=authMode==="signin"?"Sign in to your trip":"Create your account";
+    document.querySelector("#authSubmit").textContent=authMode==="signin"?"Sign in":"Sign up";
+    document.querySelector("#authSwitch").textContent=authMode==="signin"?"Create an account":"Already have an account? Sign in";
+    authMessage("");
+  };
+  document.querySelector("#authForm").onsubmit=async ev=>{
+    ev.preventDefault();authMessage("");
+    const email=document.querySelector("#authEmail").value.trim();
+    const password=document.querySelector("#authPassword").value;
+    try{
+      if(authMode==="signup"){
+        const cred=await firebase.auth().createUserWithEmailAndPassword(email,password);
+        await cred.user.sendEmailVerification();
+        authMessage("Verification email sent. Verify your email before continuing.");
+      }else await firebase.auth().signInWithEmailAndPassword(email,password);
+    }catch(e){authMessage(e.message)}
+  };
+  document.querySelector("#authReset").onclick=async()=>{
+    const email=document.querySelector("#authEmail").value.trim();
+    if(!email){authMessage("Enter your email address first.");return}
+    try{await firebase.auth().sendPasswordResetEmail(email);authMessage("If this account exists, a reset email will arrive.")}catch(e){authMessage(e.message)}
+  };
+  document.querySelector("#authResend").onclick=async()=>{
+    try{await firebase.auth().currentUser.sendEmailVerification();authMessage("Verification email resent.")}catch(e){authMessage(e.message)}
+  };
+  document.querySelector("#authRefresh").onclick=async()=>{
+    try{const u=firebase.auth().currentUser;await u.reload();await u.getIdToken(true);
+      if(u.emailVerified){document.querySelector("#authVerify").hidden=true;verifiedUser=u;initializeListeners(u)}
+      else authMessage("Email not verified yet. Check your inbox and spam folder.");
+    }catch(e){authMessage(e.message)}
+  };
+  document.querySelector("#signOutBtn").onclick=()=>firebase.auth().signOut();
+  firebase.auth().onAuthStateChanged(async user=>{
+    stopListeners();
+    if(!user){verifiedUser=null;document.querySelector("#authVerify").hidden=true;showLogin();render();return}
+    try{await user.reload();await user.getIdToken(true)}catch(e){authMessage(e.message);showLogin();return}
+    if(!user.emailVerified){
+      document.querySelector("#authVerify").hidden=false;showLogin();
+      authMessage("Verify your email to access the shared ledger.");render();return;
+    }
+    verifiedUser=user;document.querySelector("#authVerify").hidden=true;
+    authMessage("");initializeListeners(user);
+  });
 }
 async function saveExpense(e){
-  const i=expenses.findIndex(x=>x.id===e.id); if(i>=0)expenses[i]=e; else expenses.push(e);
-  if(store){try{await store.collection("expenses").doc(e.id).set(e)}catch(err){banner="Save failed: "+(err&&err.message||err)}} else lsSave();
-  render();
+  if(!tripRef){banner="Sign in first to save shared expenses.";render();return}
+  try{await tripRef.collection("expenses").doc(e.id).set(e)}catch(err){reportDatabaseError(err)}
 }
 async function removeExpense(id){
-  expenses=expenses.filter(x=>x.id!==id);
-  if(store){try{await store.collection("expenses").doc(id).delete()}catch(err){banner="Delete failed: "+(err&&err.message||err)}} else lsSave();
-  render();
+  if(!tripRef)return;
+  try{await tripRef.collection("expenses").doc(id).delete()}catch(err){reportDatabaseError(err)}
 }
 async function saveSettings(){
-  if(store){try{await store.doc("meta/settings").set(settings)}catch(err){banner="Save failed: "+(err&&err.message||err)}} else lsSave();
-  render();
+  if(!tripRef)return;
+  try{await tripRef.collection("meta").doc("settings").set(settings)}catch(err){reportDatabaseError(err)}
 }
-
 /* ---------- math ---------- */
 function compute(){
   const ids=settings.travelers.map(t=>t.id);
@@ -262,10 +349,13 @@ async function exportCsv(){
   const q=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
   const head=["Date","Description","Category","Paid by","Amount","Notes","Shared by"];
   const body=expenses.slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(e=>[e.date,e.desc,e.cat,tname(e.paidBy),e.amount,e.notes,(e.shares||[]).map(tname).join("; ")].map(q).join(","));
-  const data=[head.map(q).join(","),...body].join("\n");
-  try{const d=await claude.use("downloads");if(!d)throw 0;await d.save({filename:(settings.tripName||"trip").replace(/\W+/g,"-")+"-expenses.csv",data})}
-  catch(e){banner="Downloads are not available here.";render()}
+  const csv=[head.map(q).join(","),...body].join("\r\n");
+  const blob=new Blob(["\ufeff",csv],{type:"text/csv;charset=utf-8;"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=(settings.tripName||"trip").replace(/\W+/g,"-")+"-expenses.csv";
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+
 render();
 initStore();
 </script>
